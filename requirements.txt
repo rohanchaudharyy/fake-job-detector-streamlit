@@ -1,0 +1,10 @@
+faiss-cpu
+joblib
+numpy
+ollama
+pandas
+pytest
+python-dotenv
+scikit-learn
+sentence-transformers
+streamlit
