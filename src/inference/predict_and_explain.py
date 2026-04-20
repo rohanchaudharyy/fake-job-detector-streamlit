@@ -19,6 +19,7 @@ EMBED_MODEL_NAME = "all-MiniLM-L6-v2"
 
 class HybridDetector:
     def __init__(self) -> None:
+        self._validate_artifacts()
         self.model = joblib.load(ARTIFACTS_DIR / "model.joblib")
         self.vectorizer = joblib.load(ARTIFACTS_DIR / "vectorizer.joblib")
         self.index = faiss.read_index(str(ARTIFACTS_DIR / "faiss.index"))
@@ -27,6 +28,21 @@ class HybridDetector:
         self.embed_model = SentenceTransformer(EMBED_MODEL_NAME)
         self.ollama_client = ollama.Client(host=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"))
         self.ollama_model = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
+
+    @staticmethod
+    def _validate_artifacts() -> None:
+        required = [
+            ARTIFACTS_DIR / "model.joblib",
+            ARTIFACTS_DIR / "vectorizer.joblib",
+            ARTIFACTS_DIR / "faiss.index",
+            ARTIFACTS_DIR / "retrieval_metadata.json",
+        ]
+        missing = [str(path) for path in required if not path.exists()]
+        if missing:
+            raise FileNotFoundError(
+                "Missing required artifacts. Run preprocessing, training, and index build first.\n"
+                f"Missing files: {missing}"
+            )
 
     def _retrieve_similar(self, text: str, top_k: int = 5) -> list[dict[str, Any]]:
         query = self.embed_model.encode([text], convert_to_numpy=True).astype("float32")

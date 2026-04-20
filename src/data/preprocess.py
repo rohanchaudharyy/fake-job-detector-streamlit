@@ -34,7 +34,20 @@ def preprocess_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         + " "
         + df.get("requirements", "")
     ).str.strip()
-    df["label"] = df["fraudulent"].astype(int)
+
+    # Some dataset exports include missing labels and/or boolean strings ("t"/"f").
+    # Keep only rows with valid labels and normalize to integer 0/1.
+    df = df[df["fraudulent"].notna()].copy()
+    normalized = (
+        df["fraudulent"]
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .replace({"t": "1", "f": "0", "true": "1", "false": "0"})
+    )
+    df["label"] = pd.to_numeric(normalized, errors="coerce")
+    df = df[df["label"].notna()].copy()
+    df["label"] = df["label"].astype(int)
     return df
 
 
