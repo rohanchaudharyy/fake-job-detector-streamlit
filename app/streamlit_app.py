@@ -3,6 +3,10 @@ from dotenv import load_dotenv
 from typing import Iterator
 from pathlib import Path
 import sys
+import os
+import re
+
+import ollama
 
 # Ensure imports work consistently on Streamlit Cloud and local runs.
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -21,6 +25,13 @@ def get_detector() -> HybridDetector:
     return HybridDetector()
 
 
+@st.cache_resource
+def get_chat_client() -> tuple[ollama.Client, str]:
+    client = ollama.Client(host=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"))
+    model = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
+    return client, model
+
+
 def render_setup_error(exc: Exception) -> None:
     st.error("Model artifacts are not ready yet, so analysis cannot run.")
     st.info("Generate artifacts once, then restart the app.")
@@ -34,6 +45,83 @@ def render_setup_error(exc: Exception) -> None:
         )
     )
     st.caption(f"Details: {exc}")
+
+
+def is_analysis_request(text: str) -> bool:
+    lowered = text.lower().strip()
+    if len(lowered) >= 280:
+        return True
+    trigger_phrases = [
+        "job description",
+        "job posting",
+        "is this fake",
+        "real or fake",
+        "analyze this",
+        "analyse this",
+        "check this posting",
+        "fraudulent",
+        "scam",
+        "company profile",
+        "salary range",
+    ]
+    return any(phrase in lowered for phrase in trigger_phrases)
+
+
+def generate_smalltalk_reply(user_text: str) -> str:
+    lowered = user_text.strip().lower()
+    if lowered in {"hi", "hello", "hey", "hello hi", "hii"}:
+        return (
+            "Hello! I am doing well, thank you. How are you? "
+            "Whenever you are ready, share your job posting and I can assess whether it looks real or fake."
+        )
+    if "how are you" in lowered:
+        return (
+            "I am good, thanks for asking. I can help you review job postings for fake-vs-real risk. "
+            "Just paste the listing when you are ready."
+        )
+    if "how have you been" in lowered or "how's your day" in lowered:
+        return (
+            "I have been doing well today, thank you. I am here and ready to help. "
+            "If you want, we can continue chatting, or you can paste a posting for analysis."
+        )
+    if "weather" in lowered:
+        return (
+            "I do not have live weather access in this app environment, but I can still help with your project tasks. "
+            "When you are ready, paste a job posting and I will analyze it for fake-vs-real risk."
+        )
+    if "thank" in lowered:
+        return "You are very welcome. Happy to help. Share a posting anytime and I will analyze it."
+
+    system_prompt = (
+        "You are a friendly assistant inside a fake-job detection app. "
+        "Reply naturally and briefly in 2-4 sentences. "
+        "If the user seems ready, invite them to paste a job posting for analysis."
+    )
+    try:
+        client, model = get_chat_client()
+        resp = client.chat(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_text},
+            ],
+        )
+        text = resp["message"]["content"].strip()
+        if text:
+            return text
+    except Exception:
+        pass
+
+    # Graceful non-repetitive fallback even when local LLM is unavailable.
+    if lowered.endswith("?"):
+        return (
+            "Good question. I might not have live external data here, but I can still chat and help with job-posting analysis. "
+            "If you paste a listing, I will run the full fake-vs-real pipeline."
+        )
+    return (
+        "Sounds good. I am here with you. "
+        "Whenever you want, paste a job listing and I will analyze it with confidence score and evidence."
+    )
 
 
 def _tone_prefix(tone: str) -> str:
@@ -112,8 +200,8 @@ def render_calculation_details(result: dict) -> None:
 def main() -> None:
     st.title("Fake Job Detection Assistant")
     st.write(
-        "Chat with the assistant by pasting a full job description and extra details. "
-        "You will get a human-style analysis with verdict, confidence, and evidence."
+        "When you paste a job posting, "
+        "it will switch to full fake-vs-real analysis with evidence."
     )
 
     if "messages" not in st.session_state:
@@ -129,22 +217,39 @@ def main() -> None:
     if "stream_next_assistant" not in st.session_state:
         st.session_state.stream_next_assistant = False
 
-    with st.form("chat_input_form"):
-        user_input = st.text_area(
-            "Your message / job posting",
-            height=220,
-            placeholder=(
-                "Paste the full job listing here with any extra details "
-                "(company info, salary, contact, benefits, etc.)."
-            ),
-        )
-        submitted = st.form_submit_button("Send")
+    st.subheader("Chat")
+    last_idx = len(st.session_state.messages) - 1
+    for idx, message in enumerate(st.session_state.messages):
+        with st.chat_message(message["role"]):
+            should_stream = (
+                st.session_state.stream_next_assistant
+                and idx == last_idx
+                and message["role"] == "assistant"
+            )
+            if should_stream:
+                st.write_stream(_stream_chunks(message["content"]))
+                st.session_state.stream_next_assistant = False
+            else:
+                st.write(message["content"])
+            if "result" in message:
+                render_calculation_details(message["result"])
+            if "error" in message:
+                render_setup_error(Exception(message["error"]))
 
-    if submitted:
-        if not user_input.strip():
-            st.warning("Please paste a job description first.")
+    user_input = st.chat_input(
+        "Type a message, or paste a job posting for analysis..."
+    )
+    if user_input:
+        st.session_state.messages.append({"role": "user", "content": user_input})
+        if not is_analysis_request(user_input):
+            st.session_state.messages.append(
+                {
+                    "role": "assistant",
+                    "content": generate_smalltalk_reply(user_input),
+                }
+            )
+            st.session_state.stream_next_assistant = True
         else:
-            st.session_state.messages.append({"role": "user", "content": user_input})
             try:
                 detector = get_detector()
             except Exception as exc:
@@ -167,25 +272,7 @@ def main() -> None:
                     }
                 )
                 st.session_state.stream_next_assistant = True
-
-    st.subheader("Chat")
-    last_idx = len(st.session_state.messages) - 1
-    for idx, message in enumerate(st.session_state.messages):
-        with st.chat_message(message["role"]):
-            should_stream = (
-                st.session_state.stream_next_assistant
-                and idx == last_idx
-                and message["role"] == "assistant"
-            )
-            if should_stream:
-                st.write_stream(_stream_chunks(message["content"]))
-                st.session_state.stream_next_assistant = False
-            else:
-                st.write(message["content"])
-            if "result" in message:
-                render_calculation_details(message["result"])
-            if "error" in message:
-                render_setup_error(Exception(message["error"]))
+        st.rerun()
 
 
 if __name__ == "__main__":
