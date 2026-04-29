@@ -7,6 +7,18 @@ A formal, submission-ready Streamlit application that detects potentially fake j
 - Semantic retrieval of similar known postings (FAISS)
 - Local LLM explanation and chat via Ollama
 
+## Quick Start (Run in 3 Commands)
+
+If you are new to this repository, run these commands from the project root to launch the app locally:
+
+```bash
+source .venv/bin/activate
+ollama serve >/tmp/ollama.log 2>&1 &
+PYTHONPATH=. streamlit run app/streamlit_app.py
+```
+
+Then open `http://localhost:8501` in your browser.
+
 ## 1) Project Objective
 
 Given a job listing, the application:
