@@ -475,9 +475,14 @@ def main() -> None:
         st.session_state.messages.append({"role": "user", "content": user_input})
 
         if not is_analysis_request(user_input):
+            reply = generate_smalltalk_reply(user_input)
             with st.chat_message("assistant"):
-                with st.spinner("typing..."):
-                    reply = generate_smalltalk_reply(user_input)
+                placeholder = st.empty()
+                # Show dots word by word so Streamlit renders it
+                for dots in ["●", "● ●", "● ● ●"]:
+                    placeholder.markdown(dots)
+                    time.sleep(0.4)
+                placeholder.empty()
                 st.write_stream(_stream_chunks(reply))
             st.session_state.messages.append({"role": "assistant", "content": reply})
             st.session_state.stream_next_assistant = False
@@ -493,8 +498,10 @@ def main() -> None:
                 st.session_state.stream_next_assistant = True
             else:
                 with st.chat_message("assistant"):
-                    with st.spinner("typing..."):
-                        result = detector.predict(job_text=user_input)
+                    typing2 = st.empty()
+                    typing2.markdown("⬤  ⬤  ⬤")
+                    result = detector.predict(job_text=user_input)
+                    typing2.empty()
                 import random
                 if result["prediction"] == "fake":
                     intros = [
