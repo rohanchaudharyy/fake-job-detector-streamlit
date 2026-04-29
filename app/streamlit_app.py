@@ -67,6 +67,20 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; }
 
 /* ── Setup error ── */
 .setup-box { background:#fff7ed; border:1px solid #fed7aa; border-radius:10px; padding:1rem; font-size:0.85rem; color:#9a3412; }
+
+/* ── Typing dots (ChatGPT style) ── */
+.typing-dots { display:inline-flex; align-items:center; gap:5px; padding:4px 2px; }
+.typing-dots span {
+    width:8px; height:8px; border-radius:50%; background:#94a3b8;
+    display:inline-block;
+    animation: bounce 1.2s infinite ease-in-out;
+}
+.typing-dots span:nth-child(2) { animation-delay:0.2s; }
+.typing-dots span:nth-child(3) { animation-delay:0.4s; }
+@keyframes bounce {
+    0%, 80%, 100% { transform: scale(0.6); opacity:0.4; }
+    40%           { transform: scale(1.1); opacity:1;   }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -296,19 +310,45 @@ def render_friendly_result(result: dict) -> None:
     </div>
     """, unsafe_allow_html=True)
 
-    # ── Plain-English explanation ──
-    explanation = result.get("explanation", "")
-    if explanation:
-        # Strip any remaining "fake probability = X.XX" style tech phrases
-        explanation = re.sub(r"fake probability\s*[=:]\s*[\d.%]+", "", explanation, flags=re.I)
-        explanation = re.sub(r"real probability\s*[=:]\s*[\d.%]+", "", explanation, flags=re.I)
-        explanation = re.sub(r"confidence score[s]?\s*[=:]?\s*[\d.%]+", "", explanation, flags=re.I)
-        explanation = explanation.strip()
+    # ── Plain-English explanation (generated, never raw model text) ──
+    flags = result.get("rule_findings") or []
+    missing_company  = any("company" in f.lower() for f in flags)
+    missing_salary   = any("salary" in f.lower() for f in flags)
 
-        st.markdown(f"""
-        <div class="section-title">In plain English 💬</div>
-        <div class="plain-box">{explanation}</div>
-        """, unsafe_allow_html=True)
+    if is_fake and fake_prob >= 0.75:
+        plain = (
+            f"We're quite confident this is a fake posting ({int(fake_prob*100)}% probability). "
+            "It shows multiple patterns that scam jobs commonly use. "
+            "We strongly recommend not applying and not sharing any personal details."
+        )
+    elif is_fake:
+        parts = []
+        if missing_company: parts.append("the company isn't clearly identified")
+        if missing_salary:  parts.append("salary details are vague or missing")
+        issues = " and ".join(parts) if parts else "some suspicious patterns were detected"
+        plain = (
+            f"This posting has a {int(fake_prob*100)}% chance of being fake. "
+            f"Specifically, {issues}. It might still be real, but we'd do some extra research before applying."
+        )
+    elif real_prob >= 0.75:
+        parts = []
+        if missing_company: parts.append("double-check the company on LinkedIn")
+        if missing_salary:  parts.append("confirm the salary range before applying")
+        tip = " and ".join(parts) if parts else "always verify the company on LinkedIn before sharing personal info"
+        plain = (
+            f"This looks like a genuine job posting ({int(real_prob*100)}% confidence). "
+            f"We didn't find major red flags — just remember to {tip}. Good luck! 🌟"
+        )
+    else:
+        plain = (
+            "The signals are mixed on this one. Some things look fine, but a couple of details "
+            "couldn't be fully verified. Take a few minutes to look up the company independently before applying."
+        )
+
+    st.markdown(f"""
+    <div class="section-title">In plain English 💬</div>
+    <div class="plain-box">{plain}</div>
+    """, unsafe_allow_html=True)
 
     # ── Safety tips ──
     if is_fake or tier == "unc":
@@ -354,9 +394,12 @@ def render_friendly_result(result: dict) -> None:
             st.caption("No similar examples retrieved.")
         else:
             for i, ex in enumerate(examples, 1):
-                label = "fake" if ex["label"] == 1 else "real"
-                st.write(f"- Example {i}: label={label}, similarity={ex['similarity']:.3f}")
-                st.caption(ex["text"])
+                label = "✅ Real" if ex["label"] == 0 else "🚨 Fake"
+                match_pct = int(ex["similarity"] * 100)
+                # Show only first 120 chars of text, cleanly
+                preview = ex["text"].strip().replace("\n", " ")[:120] + "…"
+                st.write(f"**{label}** — {match_pct}% similar")
+                st.caption(f"_{preview}_")
 
 
 def render_setup_error(exc: Exception) -> None:
@@ -435,7 +478,7 @@ def main() -> None:
         if not is_analysis_request(user_input):
             with st.chat_message("assistant"):
                 typing = st.empty()
-                typing.markdown("_Typing…_")
+                typing.markdown('<div class="typing-dots"><span></span><span></span><span></span></div>', unsafe_allow_html=True)
                 reply = generate_smalltalk_reply(user_input)
                 typing.empty()
                 st.write_stream(_stream_chunks(reply))
@@ -452,8 +495,11 @@ def main() -> None:
                 })
                 st.session_state.stream_next_assistant = True
             else:
-                with st.spinner("On it! Scanning the posting for red flags… 🔍"):
+                with st.chat_message("assistant"):
+                    scanning = st.empty()
+                    scanning.markdown('<div class="typing-dots"><span></span><span></span><span></span></div>', unsafe_allow_html=True)
                     result = detector.predict(job_text=user_input)
+                    scanning.empty()
                 import random
                 if result["prediction"] == "fake":
                     intros = [
