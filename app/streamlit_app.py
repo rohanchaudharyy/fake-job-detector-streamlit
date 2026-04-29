@@ -346,7 +346,6 @@ def render_friendly_result(result: dict) -> None:
         )
 
     st.markdown(f"""
-    <div class="section-title">In plain English 💬</div>
     <div class="plain-box">{plain}</div>
     """, unsafe_allow_html=True)
 
@@ -477,10 +476,8 @@ def main() -> None:
 
         if not is_analysis_request(user_input):
             with st.chat_message("assistant"):
-                typing = st.empty()
-                typing.markdown('<div class="typing-dots"><span></span><span></span><span></span></div>', unsafe_allow_html=True)
-                reply = generate_smalltalk_reply(user_input)
-                typing.empty()
+                with st.spinner("typing..."):
+                    reply = generate_smalltalk_reply(user_input)
                 st.write_stream(_stream_chunks(reply))
             st.session_state.messages.append({"role": "assistant", "content": reply})
             st.session_state.stream_next_assistant = False
@@ -496,10 +493,8 @@ def main() -> None:
                 st.session_state.stream_next_assistant = True
             else:
                 with st.chat_message("assistant"):
-                    scanning = st.empty()
-                    scanning.markdown('<div class="typing-dots"><span></span><span></span><span></span></div>', unsafe_allow_html=True)
-                    result = detector.predict(job_text=user_input)
-                    scanning.empty()
+                    with st.spinner("typing..."):
+                        result = detector.predict(job_text=user_input)
                 import random
                 if result["prediction"] == "fake":
                     intros = [
