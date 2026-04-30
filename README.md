@@ -117,6 +117,16 @@ This produces:
 
 ## 7) Run Streamlit App
 
+The Streamlit chatbot interface was designed to be friendly and accessible:
+
+- Friendly bot personality with warm, varied replies
+- Animated typing dots before every response
+- Plain-English verdict card instead of raw ML output
+- Colour-coded red flag pills (🔴 fake signals, 🟢 good signals)
+- Safety tips based on verdict (what to do next)
+- Technical details hidden in a collapsible section
+- Smalltalk support (greetings, job hunt anxiety, goodbyes etc.)
+
 ```bash
 streamlit run app/streamlit_app.py
 ```
