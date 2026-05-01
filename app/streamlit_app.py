@@ -311,7 +311,7 @@ def render_friendly_result(result: dict) -> None:
     </div>
     """, unsafe_allow_html=True)
 
-    # ── Plain-English explanation (generated, never raw model text) ──
+    # ── Plain-English explanation (friendly deterministic summary) ──
     flags = result.get("rule_findings") or []
     missing_company  = any("company" in f.lower() for f in flags)
     missing_salary   = any("salary" in f.lower() for f in flags)
@@ -350,6 +350,18 @@ def render_friendly_result(result: dict) -> None:
     <div class="plain-box">{plain}</div>
     """, unsafe_allow_html=True)
 
+    # ── Ollama explanation visibility (explicitly show model output) ──
+    explanation_text = (result.get("explanation") or "").strip()
+    is_fallback_expl = "I am currently sharing a concise explanation" in explanation_text
+    source_label = "Fallback summary (Ollama unavailable/refused)" if is_fallback_expl else "Live Ollama response"
+
+    if explanation_text:
+        st.markdown("### 🤖 AI explanation used in this result")
+        st.caption(f"Source: {source_label}")
+        st.markdown(f"""
+        <div class="plain-box">{explanation_text}</div>
+        """, unsafe_allow_html=True)
+
     # ── Safety tips ──
     if is_fake or tier == "unc":
         st.markdown("""
@@ -387,6 +399,8 @@ def render_friendly_result(result: dict) -> None:
             st.write("**Raw rule-based findings**")
             for f in (result.get("rule_findings") or ["None triggered"]):
                 st.write(f"- {f}")
+            st.write("**Explanation source**")
+            st.write(f"- {source_label}")
 
         st.write("**Similar cases from training data**")
         examples = result.get("similar_examples") or []
