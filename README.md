@@ -142,12 +142,4 @@ The baseline training script reports:
 
 For fraud detection, prioritize recall/F1 for the fake class.
 
-## 9) Notes for Submission
 
-- Keep all generated artifacts reproducible via scripts.
-- Include screenshot(s) of the Streamlit app in your report.
-- Explain why hybrid design improves trust:
-  - ML for deterministic decision
-  - rules for explicit risk flags
-  - retrieval for evidence
-  - LLM for user-friendly explanation
